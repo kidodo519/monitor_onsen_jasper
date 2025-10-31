@@ -12,6 +12,7 @@ defaults:
     import_tables:
       enabled: true
       date_column: "import_date"
+      facility_column: "facility_code"
     s3_uploads:
       enabled: true
       require_min_files: 1
@@ -20,11 +21,17 @@ defaults:
       table: "repeat_track_tags"
       created_at_column: "created_at"
       max_stall_days: 3
+      facility_column: "facility_code"
 
 properties:
   - name: "三晃商事"
     enabled: true
     hotel_key: "sankoh"
+    facilities:
+      - code: "SKH01"
+        name: "三晃商事 本館"
+      - code: "SKH02"
+        name: "三晃商事 別館"
     db:
       schema: "public"
     checks:

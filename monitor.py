@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import os, sys, json, yaml, boto3, psycopg2, urllib.request, urllib.error, logging, argparse, traceback, socket
+from typing import Optional
 from psycopg2 import sql
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -61,20 +62,45 @@ def connect_db(dsn: str):
     conn.set_client_encoding('UTF8')
     return conn
 
-def has_rows_for_today(conn, schema: str, table: str, date_col: str, today_jst: datetime) -> bool:
+def has_rows_for_today(
+    conn,
+    schema: str,
+    table: str,
+    date_col: str,
+    today_jst: datetime,
+    facility_code: Optional[str] = None,
+    facility_column: Optional[str] = "facility_code",
+) -> bool:
     with conn.cursor() as cur:
-        q = sql.SQL("SELECT 1 FROM {s}.{t} WHERE {c}::date = %s LIMIT 1").format(
+        q = sql.SQL("SELECT 1 FROM {s}.{t} WHERE {c}::date = %s").format(
             s=sql.Identifier(schema), t=sql.Identifier(table), c=sql.Identifier(date_col)
         )
-        cur.execute(q, (today_jst.date(),))
+        params = [today_jst.date()]
+        if facility_code is not None and facility_column:
+            q = q + sql.SQL(" AND {fc} = %s").format(fc=sql.Identifier(facility_column))
+            params.append(facility_code)
+        q = q + sql.SQL(" LIMIT 1")
+        cur.execute(q, params)
         return cur.fetchone() is not None
 
-def latest_created_at(conn, schema: str, table: str, created_col: str):
+
+def latest_created_at(
+    conn,
+    schema: str,
+    table: str,
+    created_col: str,
+    facility_code: Optional[str] = None,
+    facility_column: Optional[str] = "facility_code",
+):
     with conn.cursor() as cur:
         q = sql.SQL("SELECT MAX({c}) FROM {s}.{t}").format(
             c=sql.Identifier(created_col), s=sql.Identifier(schema), t=sql.Identifier(table)
         )
-        cur.execute(q)
+        params = []
+        if facility_code is not None and facility_column:
+            q = q + sql.SQL(" WHERE {fc} = %s").format(fc=sql.Identifier(facility_column))
+            params.append(facility_code)
+        cur.execute(q, params)
         row = cur.fetchone()
         return row[0] if row else None
 
@@ -116,25 +142,98 @@ def run_checks_for_property(prop: dict, defaults: dict, tz: ZoneInfo, today: dat
     checks_default = defaults.get("checks") or {}
     checks_prop = prop.get("checks") or {}
     checks = {**checks_default, **checks_prop}
+    raw_facilities = prop.get("facilities") or []
+    facilities = []
+    for idx, raw_fac in enumerate(raw_facilities, 1):
+        if isinstance(raw_fac, str):
+            facilities.append({"code": raw_fac, "name": raw_fac, "enabled": True})
+        elif isinstance(raw_fac, dict):
+            code = raw_fac.get("code") or raw_fac.get("facility_code")
+            if not code:
+                results["errors"].append(f"施設定義{idx}: codeが未設定のためスキップ。")
+                continue
+            facilities.append(
+                {
+                    "code": code,
+                    "name": raw_fac.get("name") or code,
+                    "enabled": raw_fac.get("enabled", True),
+                }
+            )
+        else:
+            results["errors"].append(
+                f"施設定義{idx}: 不正な形式（{type(raw_fac).__name__}）。str もしくは dict を指定してください。"
+            )
+
+    def facility_label(fac: Optional[dict]) -> str:
+        if not fac:
+            return ""
+        name = fac.get("name")
+        code = fac.get("code")
+        if name and code and name != code:
+            return f"{name}({code})"
+        return name or code or "UNKNOWN"
+
     if (checks.get("import_tables") or {}).get("enabled", False):
         if not dsn:
             results["errors"].append("① DB接続情報(dsn)未設定のためチェック不可。")
         else:
             try:
                 with connect_db(dsn) as conn:
-                    tables = (checks.get("import_tables") or {}).get("tables", [])
-                    default_col = (checks.get("import_tables") or {}).get("date_column", "import_date")
+                    cfg_import = checks.get("import_tables") or {}
+                    tables = cfg_import.get("tables", [])
+                    default_col = cfg_import.get("date_column", "import_date")
+                    default_facility_col = cfg_import.get("facility_column", "facility_code")
+
+                    def run_import_check(
+                        table_name: str, date_col: str, fac: Optional[dict], fac_col: Optional[str]
+                    ):
+                        fac_label = facility_label(fac)
+                        prefix = f"① {table_name}"
+                        if fac_label:
+                            prefix = f"{prefix} [{fac_label}]"
+                        try:
+                            ok = has_rows_for_today(
+                                conn,
+                                schema,
+                                table_name,
+                                date_col,
+                                today,
+                                facility_code=(fac or {}).get("code"),
+                                facility_column=fac_col,
+                            )
+                            if ok:
+                                results["ok"].append(f"{prefix}: OK")
+                            else:
+                                results["errors"].append(
+                                    f"{prefix}: {date_col} が『今日』のレコード無し"
+                                )
+                        except Exception as e:
+                            results["errors"].append(
+                                f"{prefix}: チェック失敗（{e.__class__.__name__}: {e}）"
+                            )
+
                     for t in tables:
                         if isinstance(t, dict):
-                            tname = t.get("name"); tcol = t.get("date_column", default_col)
+                            tname = t.get("name")
+                            tcol = t.get("date_column", default_col)
+                            tfac_col = t.get("facility_column", default_facility_col)
                         else:
-                            tname = str(t); tcol = default_col
-                        try:
-                            ok = has_rows_for_today(conn, schema, tname, tcol, today)
-                            if ok: results["ok"].append(f"① {tname}: OK")
-                            else:  results["errors"].append(f"① {tname}: {tcol} が『今日』のレコード無し")
-                        except Exception as e:
-                            results["errors"].append(f"① {tname}: チェック失敗（{e.__class__.__name__}: {e}）")
+                            tname = str(t)
+                            tcol = default_col
+                            tfac_col = default_facility_col
+                        if not tname:
+                            results["errors"].append("① テーブル名未設定のエントリが存在します。")
+                            continue
+                        if facilities and tfac_col:
+                            for fac in facilities:
+                                if not fac.get("enabled", True):
+                                    results["ok"].append(
+                                        f"① {tname} [{facility_label(fac)}]: 施設設定が無効のためスキップ。"
+                                    )
+                                    continue
+                                run_import_check(tname, tcol, fac, tfac_col)
+                        else:
+                            run_import_check(tname, tcol, None, None)
             except Exception as e:
                 results["errors"].append(f"① DB接続失敗（{e.__class__.__name__}: {e}）")
     if (checks.get("s3_uploads") or {}).get("enabled", False):
@@ -162,17 +261,49 @@ def run_checks_for_property(prop: dict, defaults: dict, tz: ZoneInfo, today: dat
                     table = tcfg.get("table", "repeat_track_tags")
                     col = tcfg.get("created_at_column", "created_at")
                     max_days = int(tcfg.get("max_stall_days", 3))
-                    latest = latest_created_at(conn, schema, table, col)
-                    if latest is None:
-                        results["errors"].append(f"③ {table}: データ無し（MAX({col})がNULL）")
-                    else:
-                        if latest.tzinfo is None: latest = latest.replace(tzinfo=tz)
-                        now_jst = datetime.now(tz)
-                        diff_days = (now_jst - latest.astimezone(tz)).days
-                        if diff_days >= max_days:
-                            results["errors"].append(f"③ {table}: 最終作成 {latest.astimezone(tz).strftime('%Y-%m-%d %H:%M:%S %Z')} / {max_days}日以上更新無し")
+                    facility_column = tcfg.get("facility_column", "facility_code")
+
+                    def run_repeat_check(fac: Optional[dict], fac_col: Optional[str]):
+                        fac_label = facility_label(fac)
+                        prefix = f"③ {table}"
+                        if fac_label:
+                            prefix = f"{prefix} [{fac_label}]"
+                        latest = latest_created_at(
+                            conn,
+                            schema,
+                            table,
+                            col,
+                            facility_code=(fac or {}).get("code"),
+                            facility_column=fac_col,
+                        )
+                        if latest is None:
+                            results["errors"].append(f"{prefix}: データ無し（MAX({col})がNULL）")
+                            return
+                        if latest.tzinfo is None:
+                            latest_local = latest.replace(tzinfo=tz)
                         else:
-                            results["ok"].append(f"③ {table}: OK（最終 {latest.astimezone(tz).strftime('%Y-%m-%d %H:%M')}）")
+                            latest_local = latest.astimezone(tz)
+                        now_jst = datetime.now(tz)
+                        diff_days = (now_jst - latest_local).days
+                        if diff_days >= max_days:
+                            results["errors"].append(
+                                f"{prefix}: 最終作成 {latest_local.strftime('%Y-%m-%d %H:%M:%S %Z')} / {max_days}日以上更新無し"
+                            )
+                        else:
+                            results["ok"].append(
+                                f"{prefix}: OK（最終 {latest_local.strftime('%Y-%m-%d %H:%M')}）"
+                            )
+
+                    if facilities and facility_column:
+                        for fac in facilities:
+                            if not fac.get("enabled", True):
+                                results["ok"].append(
+                                    f"③ {table} [{facility_label(fac)}]: 施設設定が無効のためスキップ。"
+                                )
+                                continue
+                            run_repeat_check(fac, facility_column)
+                    else:
+                        run_repeat_check(None, None)
             except Exception as e:
                 results["errors"].append(f"③ DB照会失敗（{e.__class__.__name__}: {e}）")
     return results
