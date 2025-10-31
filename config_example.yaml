@@ -1,0 +1,288 @@
+defaults:
+  timezone: "Asia/Tokyo"
+  slack:
+    webhook_url: "xxxxxxxx"
+  s3:
+    bucket: "onsen-jasper-importer-prod-archive"
+    prefix_template: "{hotel_key}/pms-reservations/"
+    require_min_files: 1
+  db:
+    dsn_template: "postgresql://bi_readonly:xxxx@incrazetech-app-db-prod.app-prod.incrazetech.dev:5432/reservation_db_{hotel_key}"
+  checks:
+    import_tables:
+      enabled: true
+      date_column: "import_date"
+    s3_uploads:
+      enabled: true
+      require_min_files: 1
+    repeat_track_tags_stall:
+      enabled: true
+      table: "repeat_track_tags"
+      created_at_column: "created_at"
+      max_stall_days: 3
+
+properties:
+  - name: "三晃商事"
+    enabled: true
+    hotel_key: "sankoh"
+    db:
+      schema: "public"
+    checks:
+      import_tables:
+        enabled: true
+        date_column: "import_date"
+        tables:
+          - "pms_reservations"
+          - "pms_reservations_onhand"
+          - "pms_rooms"
+          - "pms_rooms_onhand"
+          - "pms_sales"
+          - "enquetes"
+          - "yoyakuban_customer"
+          - "yoyakuban_reservations"
+          - "yoyakuban_reservations_onhand"
+      s3_uploads:
+        enabled: true
+        require_min_files: 1
+      repeat_track_tags_stall:
+        enabled: true
+        table: "repeat_track_tags"
+        created_at_column: "created_at"
+        max_stall_days: 3
+
+  - name: "A&C"
+    enabled: false
+    hotel_key: "a_and_c"
+    db:
+      schema: "public"
+    checks:
+      import_tables:
+        enabled: true
+        date_column: "import_date"
+        tables:
+          - "pms_reservations"
+          - "pms_reservations_onhand"
+          - "pms_rooms"
+          - "pms_rooms_onhand"
+          - "pms_sales"
+          - "pms_sales_onhand"          
+          - "enquetes"
+          - "yoyakuban_customer"
+          - "yoyakuban_reservations"
+          - "yoyakuban_reservations_onhand"
+      s3_uploads:
+        enabled: true
+        require_min_files: 1
+      repeat_track_tags_stall:
+        enabled: true
+        table: "repeat_track_tags"
+        created_at_column: "created_at"
+        max_stall_days: 3
+
+  - name: "たちばなや"
+    enabled: true
+    hotel_key: "tachibanaya"
+    db:
+      schema: "public"
+    checks:
+      import_tables:
+        enabled: true
+        date_column: "import_date"
+        tables:
+          - "pms_reservations"
+          - "pms_reservations_onhand"
+          - "pms_rooms"
+          - "pms_rooms_onhand"
+          - "pms_sales"
+          - "pms_sales_onhand"          
+          - "enquetes"
+          - "yoyakuban_customer"
+          - "yoyakuban_reservations"
+          - "yoyakuban_reservations_onhand"
+      s3_uploads:
+        enabled: true
+        require_min_files: 1
+      repeat_track_tags_stall:
+        enabled: true
+        table: "repeat_track_tags"
+        created_at_column: "created_at"
+        max_stall_days: 3
+
+  - name: "銀山荘"
+    enabled: true
+    hotel_key: "ginzansou"
+    db:
+      schema: "public"
+    checks:
+      import_tables:
+        enabled: true
+        date_column: "import_date"
+        tables:
+          - "pms_reservations"
+          - "pms_reservations_onhand"
+          - "pms_rooms"
+          - "pms_rooms_onhand"
+          - "pms_sales"
+          - "pms_sales_onhand"          
+          - "enquetes"
+          - "yoyakuban_customer"
+          - "yoyakuban_reservations"
+          - "yoyakuban_reservations_onhand"
+      s3_uploads:
+        enabled: true
+        require_min_files: 1
+      repeat_track_tags_stall:
+        enabled: true
+        table: "repeat_track_tags"
+        created_at_column: "created_at"
+        max_stall_days: 3
+
+  - name: "サンシャイン鬼怒川"
+    enabled: false
+    hotel_key: "sunshine"
+    db:
+      schema: "public"
+    checks:
+      import_tables:
+        enabled: true
+        date_column: "import_date"
+        tables:
+          - "pms_reservations"
+          - "pms_reservations_onhand"
+          - "pms_rooms"
+          - "pms_rooms_onhand"
+          - "pms_sales"
+          - "pms_sales_onhand"          
+          - "enquetes"
+          - "yoyakuban_customer"
+          - "yoyakuban_reservations"
+          - "yoyakuban_reservations_onhand"
+      s3_uploads:
+        enabled: true
+        require_min_files: 1
+      repeat_track_tags_stall:
+        enabled: true
+        table: "repeat_track_tags"
+        created_at_column: "created_at"
+        max_stall_days: 3
+
+  - name: "八の坊"
+    enabled: true
+    hotel_key: "hachinobo"
+    db:
+      schema: "public"
+    checks:
+      import_tables:
+        enabled: true
+        date_column: "import_date"
+        tables:
+          - "pms_reservations"
+          - "pms_reservations_onhand"
+          - "pms_rooms"
+          - "pms_rooms_onhand"
+          - "pms_sales"
+          - "pms_sales_onhand"          
+          - "enquetes"
+          - "enquetes_text"
+          - "yoyakuban_customer"
+          - "yoyakuban_reservations"
+          - "yoyakuban_reservations_onhand"
+      s3_uploads:
+        enabled: true
+        require_min_files: 1
+      repeat_track_tags_stall:
+        enabled: true
+        table: "repeat_track_tags"
+        created_at_column: "created_at"
+        max_stall_days: 3
+
+  - name: "楓音"
+    enabled: false
+    hotel_key: "kanon"
+    db:
+      schema: "public"
+    checks:
+      import_tables:
+        enabled: true
+        date_column: "import_date"
+        tables:
+          - "pms_reservations"
+          - "pms_reservations_onhand"
+          - "pms_reservations_hs"
+          - "pms_reservations_onhand_hs"
+          - "pms_rooms"
+          - "pms_rooms_onhand"
+          - "pms_rooms_hs"
+          - "pms_rooms_onhand_hs"
+          - "pms_sales"
+          - "pms_sales_onhand"          
+          - "enquetes"
+          - "yoyakuban_customer"
+          - "yoyakuban_reservations"
+          - "yoyakuban_reservations_onhand"
+      s3_uploads:
+        enabled: true
+        require_min_files: 1
+      repeat_track_tags_stall:
+        enabled: true
+        table: "repeat_track_tags"
+        created_at_column: "created_at"
+        max_stall_days: 3
+
+  - name: "御所坊"
+    enabled: true
+    hotel_key: "goshobo"
+    db:
+      schema: "public"
+    checks:
+      import_tables:
+        enabled: true
+        date_column: "import_date"
+        tables:
+          - "pms_reservations"
+          - "pms_reservations_onhand"
+          - "pms_rooms"
+          - "pms_rooms_onhand"
+          - "pms_sales"
+          - "pms_sales_onhand"          
+          # - "enquetes"
+          - "yoyakuban_customer"
+          - "yoyakuban_reservations"
+          - "yoyakuban_reservations_onhand"
+      s3_uploads:
+        enabled: true
+        require_min_files: 1
+      repeat_track_tags_stall:
+        enabled: true
+        table: "repeat_track_tags"
+        created_at_column: "created_at"
+        max_stall_days: 3
+
+  - name: "グランディア芳泉"
+    enabled: true
+    hotel_key: "grandia"
+    db:
+      schema: "public"
+    checks:
+      import_tables:
+        enabled: true
+        date_column: "import_date"
+        tables:
+          - "pms_reservations"
+          - "pms_reservations_onhand"
+          - "pms_rooms"
+          - "pms_rooms_onhand"
+          - "pms_sales"
+          - "pms_sales_onhand"          
+          # - "enquetes"
+          # - "yoyakuban_customer"
+          # - "yoyakuban_reservations"
+          # - "yoyakuban_reservations_onhand"
+      s3_uploads:
+        enabled: true
+        require_min_files: 1
+      repeat_track_tags_stall:
+        enabled: false
+        table: "repeat_track_tags"
+        created_at_column: "created_at"
+        max_stall_days: 3
