@@ -16,7 +16,7 @@ defaults:
       facility_operator: "="
       facility_value_template: "{code}"
     s3_uploads:
-      enabled: true
+      enabled: false
       require_min_files: 1
     repeat_track_tags_stall:
       enabled: true
@@ -30,10 +30,14 @@ properties:
     enabled: true
     hotel_key: "sankoh"
     facilities:
-      - code: "SKH01"
-        name: "三晃商事 本館"
-      - code: "SKH02"
-        name: "三晃商事 別館"
+      - code: "1"
+        name: "夢乃井"
+      - code: "2"
+        name: "夕やけこやけ"
+      - code: "3"
+        name: "祥吉"
+      - code: "4"
+        name: "加里屋旅館Q"
     db:
       schema: "public"
     checks:
@@ -47,15 +51,10 @@ properties:
           - "pms_rooms_onhand"
           - "pms_sales"
           - name: "enquetes"
-            facility_filter:
-              column: "facility_name"
-              operator: "like"
-              value_template: "{name}%"
+            facility_filter: false
           - "yoyakuban_customer"
           - "yoyakuban_reservations"
           - "yoyakuban_reservations_onhand"
-          - name: "facility_summary_daily"
-            facility_filter: false
       s3_uploads:
         enabled: true
         require_min_files: 1
@@ -68,6 +67,11 @@ properties:
   - name: "A&C"
     enabled: false
     hotel_key: "a_and_c"
+    facilities:
+      - code: "1"
+        name: "季譜の里"
+      - code: "2"
+        name: "ろ霞"
     db:
       schema: "public"
     checks:
@@ -97,6 +101,9 @@ properties:
   - name: "たちばなや"
     enabled: true
     hotel_key: "tachibanaya"
+    facilities:
+      - code: "1"
+        name: "たちばなや"
     db:
       schema: "public"
     checks:
@@ -110,7 +117,8 @@ properties:
           - "pms_rooms_onhand"
           - "pms_sales"
           - "pms_sales_onhand"          
-          - "enquetes"
+          - name: "enquetes"
+            facility_filter: false
           - "yoyakuban_customer"
           - "yoyakuban_reservations"
           - "yoyakuban_reservations_onhand"
@@ -126,6 +134,13 @@ properties:
   - name: "銀山荘"
     enabled: true
     hotel_key: "ginzansou"
+    facilities:
+      - code: "1"
+        name: "銀山荘"
+      - code: "2"
+        name: "古勢起屋本館"
+      - code: "3"
+        name: "古勢起屋別館"
     db:
       schema: "public"
     checks:
@@ -139,7 +154,8 @@ properties:
           - "pms_rooms_onhand"
           - "pms_sales"
           - "pms_sales_onhand"          
-          - "enquetes"
+          - name: "enquetes"
+            facility_filter: false
           - "yoyakuban_customer"
           - "yoyakuban_reservations"
           - "yoyakuban_reservations_onhand"
@@ -155,6 +171,11 @@ properties:
   - name: "サンシャイン鬼怒川"
     enabled: false
     hotel_key: "sunshine"
+    facilities:
+      - code: "1"
+        name: "ホテルサンシャイン鬼怒川"
+      - code: "2"
+        name: "栂の季"
     db:
       schema: "public"
     checks:
@@ -184,6 +205,9 @@ properties:
   - name: "八の坊"
     enabled: true
     hotel_key: "hachinobo"
+    facilities:
+      - code: "1"
+        name: "八の坊"
     db:
       schema: "public"
     checks:
@@ -197,8 +221,10 @@ properties:
           - "pms_rooms_onhand"
           - "pms_sales"
           - "pms_sales_onhand"          
-          - "enquetes"
-          - "enquetes_text"
+          - name: "enquetes"
+            facility_filter: false
+          - name: "enquetes_text"
+            facility_filter: false
           - "yoyakuban_customer"
           - "yoyakuban_reservations"
           - "yoyakuban_reservations_onhand"
@@ -214,6 +240,13 @@ properties:
   - name: "楓音"
     enabled: false
     hotel_key: "kanon"
+    facilities:
+      - code: "1"
+        name: "楓音"
+      - code: "2"
+        name: "ふじや"
+      - code: "3"
+        name: "紅葉"
     db:
       schema: "public"
     checks:
@@ -247,6 +280,11 @@ properties:
   - name: "御所坊"
     enabled: true
     hotel_key: "goshobo"
+    facilities:
+      - code: "1"
+        name: "御所別墅"
+      - code: "2"
+        name: "御所坊"
     db:
       schema: "public"
     checks:
@@ -276,6 +314,107 @@ properties:
   - name: "グランディア芳泉"
     enabled: true
     hotel_key: "grandia"
+    facilities:
+      - code: "1"
+        name: "グランディア芳泉"
+    db:
+      schema: "public"
+    checks:
+      import_tables:
+        enabled: true
+        date_column: "import_date"
+        tables:
+          - "pms_reservations"
+          - "pms_reservations_onhand"
+          - "pms_rooms"
+          - "pms_rooms_onhand"
+          - "pms_sales"
+          - "pms_sales_onhand"          
+          # - "enquetes"
+          # - "yoyakuban_customer"
+          # - "yoyakuban_reservations"
+          # - "yoyakuban_reservations_onhand"
+      s3_uploads:
+        enabled: true
+        require_min_files: 1
+      repeat_track_tags_stall:
+        enabled: false
+        table: "repeat_track_tags"
+        created_at_column: "created_at"
+        max_stall_days: 3
+
+  - name: "柳生の庄"
+    enabled: true
+    hotel_key: "yagyunosyo"
+    facilities:
+      - code: "1"
+        name: "柳生の庄"
+    db:
+      schema: "public"
+    checks:
+      import_tables:
+        enabled: true
+        date_column: "import_date"
+        tables:
+          - "pms_reservations"
+          - "pms_reservations_onhand"
+          - "pms_rooms"
+          - "pms_rooms_onhand"
+          - "pms_sales"
+          - "pms_sales_onhand"          
+          # - "enquetes"
+          - "yoyakuban_customer"
+          - "yoyakuban_reservations"
+          - "yoyakuban_reservations_onhand"
+      s3_uploads:
+        enabled: true
+        require_min_files: 1
+      repeat_track_tags_stall:
+        enabled: false
+        table: "repeat_track_tags"
+        created_at_column: "created_at"
+        max_stall_days: 3
+
+
+  - name: "紀伊乃国屋"
+    enabled: true
+    hotel_key: "kinokuniya"
+    facilities:
+      - code: "1"
+        name: "紀伊乃国屋"
+    db:
+      schema: "public"
+    checks:
+      import_tables:
+        enabled: true
+        date_column: "import_date"
+        tables:
+          - "pms_reservations"
+          - "pms_reservations_onhand"
+          - "pms_rooms"
+          - "pms_rooms_onhand"
+          - "pms_sales"
+          - "pms_sales_onhand"          
+          - "enquetes"
+          # - "yoyakuban_customer"
+          # - "yoyakuban_reservations"
+          # - "yoyakuban_reservations_onhand"
+      s3_uploads:
+        enabled: true
+        require_min_files: 1
+      repeat_track_tags_stall:
+        enabled: true
+        table: "repeat_track_tags"
+        created_at_column: "created_at"
+        max_stall_days: 3
+
+
+  - name: "あらや滔々庵"
+    enabled: true
+    hotel_key: "arayatotoan"
+    facilities:
+      - code: "1"
+        name: "あらや滔々庵"
     db:
       schema: "public"
     checks:
