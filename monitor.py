@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import os, sys, json, yaml, boto3, psycopg2, urllib.request, urllib.error, logging, argparse, traceback, socket
+import os, sys, json, yaml, boto3, psycopg2, urllib.request, urllib.error, logging, argparse, traceback, socket, copy
 from typing import Optional, Tuple, List, Dict, Any
 from psycopg2 import sql
 from datetime import datetime, timedelta, timezone
@@ -260,7 +260,34 @@ def run_checks_for_property(prop: dict, defaults: dict, tz: ZoneInfo, today: dat
     schema = db.get("schema", "public")
     checks_default = defaults.get("checks") or {}
     checks_prop = prop.get("checks") or {}
-    checks = {**checks_default, **checks_prop}
+
+    checks: Dict[str, Any] = {}
+    for key in set(checks_default.keys()) | set(checks_prop.keys()):
+        default_cfg = checks_default.get(key)
+        prop_cfg = checks_prop.get(key)
+
+        if isinstance(default_cfg, dict):
+            merged_cfg = copy.deepcopy(default_cfg)
+        else:
+            merged_cfg = {}
+
+        if isinstance(prop_cfg, dict):
+            merged_cfg.update(prop_cfg)
+        elif prop_cfg is not None:
+            merged_cfg["enabled"] = prop_cfg
+
+        default_disabled = False
+        if isinstance(default_cfg, dict):
+            default_disabled = default_cfg.get("enabled") is False
+        elif default_cfg is False:
+            default_disabled = True
+
+        if default_disabled:
+            merged_cfg["enabled"] = False
+        elif "enabled" not in merged_cfg and isinstance(default_cfg, dict) and "enabled" in default_cfg:
+            merged_cfg["enabled"] = default_cfg.get("enabled")
+
+        checks[key] = merged_cfg
     raw_facilities = prop.get("facilities") or []
     facilities = []
     for idx, raw_fac in enumerate(raw_facilities, 1):
