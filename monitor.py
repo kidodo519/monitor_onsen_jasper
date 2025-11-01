@@ -287,10 +287,10 @@ def run_checks_for_property(prop: dict, defaults: dict, tz: ZoneInfo, today: dat
         if not fac:
             return ""
         name = fac.get("name")
+        if name:
+            return name
         code = fac.get("code")
-        if name and code and name != code:
-            return f"{name}({code})"
-        return name or code or "UNKNOWN"
+        return code or "UNKNOWN"
 
     if (checks.get("import_tables") or {}).get("enabled", False):
         if not dsn:
@@ -353,84 +353,104 @@ def run_checks_for_property(prop: dict, defaults: dict, tz: ZoneInfo, today: dat
                             )
 
                     for t in tables:
-                        if isinstance(t, dict):
-                            tname = t.get("name")
-                            tcol = t.get("date_column", default_col)
+                        tname = None
+                        try:
+                            table_facility_filter = default_facility_filter
+                            tcol = default_col
                             inline_override: Dict[str, Any] = {}
                             has_inline_override = False
-                            if "facility_column" in t:
-                                inline_override["column"] = t.get("facility_column")
-                                has_inline_override = True
-                            if "facility_operator" in t:
-                                inline_override["operator"] = t.get("facility_operator")
-                                has_inline_override = True
-                            if "facility_value_template" in t:
-                                inline_override["value_template"] = t.get(
-                                    "facility_value_template"
-                                )
-                                has_inline_override = True
+                            if isinstance(t, dict):
+                                tname = t.get("name")
+                                tcol = t.get("date_column", default_col)
+                                if "facility_column" in t:
+                                    inline_override["column"] = t.get("facility_column")
+                                    has_inline_override = True
+                                if "facility_operator" in t:
+                                    inline_override["operator"] = t.get("facility_operator")
+                                    has_inline_override = True
+                                if "facility_value_template" in t:
+                                    inline_override["value_template"] = t.get(
+                                        "facility_value_template"
+                                    )
+                                    has_inline_override = True
 
-                            table_facility_filter = normalize_facility_filter_settings(
-                                base=default_facility_filter,
-                                override=inline_override if has_inline_override else None,
-                                fallback_column=(
-                                    inline_override.get("column")
-                                    if has_inline_override and inline_override.get("column") is not None
-                                    else default_facility_column
-                                ),
-                                fallback_operator=(
-                                    inline_override.get("operator")
-                                    if has_inline_override and inline_override.get("operator") is not None
-                                    else default_facility_operator
-                                ),
-                                fallback_template=(
-                                    inline_override.get("value_template")
-                                    if has_inline_override
-                                    and inline_override.get("value_template") is not None
-                                    else default_facility_template
-                                ),
-                            )
-
-                            if "facility_filter" in t:
                                 table_facility_filter = normalize_facility_filter_settings(
-                                    base=table_facility_filter,
-                                    override=t.get("facility_filter"),
+                                    base=default_facility_filter,
+                                    override=inline_override if has_inline_override else None,
                                     fallback_column=(
-                                        (table_facility_filter or {}).get("column")
-                                        or inline_override.get("column")
+                                        inline_override.get("column")
                                         if has_inline_override
+                                        and inline_override.get("column") is not None
                                         else default_facility_column
                                     ),
                                     fallback_operator=(
-                                        (table_facility_filter or {}).get("operator")
-                                        or inline_override.get("operator")
+                                        inline_override.get("operator")
                                         if has_inline_override
+                                        and inline_override.get("operator") is not None
                                         else default_facility_operator
                                     ),
                                     fallback_template=(
-                                        (table_facility_filter or {}).get("value_template")
-                                        or inline_override.get("value_template")
+                                        inline_override.get("value_template")
                                         if has_inline_override
+                                        and inline_override.get("value_template") is not None
                                         else default_facility_template
                                     ),
                                 )
-                        else:
-                            tname = str(t)
-                            tcol = default_col
-                            table_facility_filter = default_facility_filter
-                        if not tname:
-                            results["errors"].append("① テーブル名未設定のエントリが存在します。")
-                            continue
-                        if facilities and table_facility_filter:
-                            for fac in facilities:
-                                if not fac.get("enabled", True):
-                                    results["ok"].append(
-                                        f"① {tname} [{facility_label(fac)}]: 施設設定が無効のためスキップ。"
+
+                                if "facility_filter" in t:
+                                    table_facility_filter = normalize_facility_filter_settings(
+                                        base=table_facility_filter,
+                                        override=t.get("facility_filter"),
+                                        fallback_column=(
+                                            (table_facility_filter or {}).get("column")
+                                            or inline_override.get("column")
+                                            if has_inline_override
+                                            else default_facility_column
+                                        ),
+                                        fallback_operator=(
+                                            (table_facility_filter or {}).get("operator")
+                                            or inline_override.get("operator")
+                                            if has_inline_override
+                                            else default_facility_operator
+                                        ),
+                                        fallback_template=(
+                                            (table_facility_filter or {}).get("value_template")
+                                            or inline_override.get("value_template")
+                                            if has_inline_override
+                                            else default_facility_template
+                                        ),
                                     )
-                                    continue
-                                run_import_check(tname, tcol, fac, table_facility_filter)
-                        else:
-                            run_import_check(tname, tcol, None, table_facility_filter if not facilities else None)
+                            else:
+                                tname = str(t)
+                                tcol = default_col
+
+                            if not tname:
+                                results["errors"].append("① テーブル名未設定のエントリが存在します。")
+                                continue
+                            if facilities and table_facility_filter:
+                                for fac in facilities:
+                                    if not fac.get("enabled", True):
+                                        results["ok"].append(
+                                            f"① {tname} [{facility_label(fac)}]: 施設設定が無効のためスキップ。"
+                                        )
+                                        continue
+                                    run_import_check(tname, tcol, fac, table_facility_filter)
+                            else:
+                                run_import_check(
+                                    tname,
+                                    tcol,
+                                    None,
+                                    table_facility_filter if not facilities else None,
+                                )
+                        except Exception as e:
+                            if not tname:
+                                if isinstance(t, dict):
+                                    tname = t.get("name") or "UNKNOWN"
+                                else:
+                                    tname = str(t) or "UNKNOWN"
+                            results["errors"].append(
+                                f"① {tname}: 設定処理失敗（{e.__class__.__name__}: {e}）"
+                            )
             except Exception as e:
                 results["errors"].append(f"① DB接続失敗（{e.__class__.__name__}: {e}）")
     if (checks.get("s3_uploads") or {}).get("enabled", False):
@@ -458,28 +478,15 @@ def run_checks_for_property(prop: dict, defaults: dict, tz: ZoneInfo, today: dat
                     table = tcfg.get("table", "repeat_track_tags")
                     col = tcfg.get("created_at_column", "created_at")
                     max_days = int(tcfg.get("max_stall_days", 3))
-                    default_repeat_filter = normalize_facility_filter_settings(
-                        base=tcfg.get("facility_filter"),
-                        override=None,
-                        fallback_column=tcfg.get("facility_column"),
-                        fallback_operator=tcfg.get("facility_operator"),
-                        fallback_template=tcfg.get("facility_value_template"),
-                    )
-
-                    def run_repeat_check(
-                        fac: Optional[dict], fac_filter: Optional[Dict[str, Any]]
-                    ):
-                        fac_label = facility_label(fac)
+                    def run_repeat_check():
                         prefix = f"③ {table}"
-                        if fac_label:
-                            prefix = f"{prefix} [{fac_label}]"
                         latest = latest_created_at(
                             conn,
                             schema,
                             table,
                             col,
-                            facility=fac,
-                            facility_filter=fac_filter,
+                            facility=None,
+                            facility_filter=None,
                         )
                         if latest is None:
                             results["errors"].append(f"{prefix}: データ無し（MAX({col})がNULL）")
@@ -499,16 +506,7 @@ def run_checks_for_property(prop: dict, defaults: dict, tz: ZoneInfo, today: dat
                                 f"{prefix}: OK（最終 {latest_local.strftime('%Y-%m-%d %H:%M')}）"
                             )
 
-                    if facilities and default_repeat_filter:
-                        for fac in facilities:
-                            if not fac.get("enabled", True):
-                                results["ok"].append(
-                                    f"③ {table} [{facility_label(fac)}]: 施設設定が無効のためスキップ。"
-                                )
-                                continue
-                            run_repeat_check(fac, default_repeat_filter)
-                    else:
-                        run_repeat_check(None, default_repeat_filter if not facilities else None)
+                    run_repeat_check()
             except Exception as e:
                 results["errors"].append(f"③ DB照会失敗（{e.__class__.__name__}: {e}）")
     return results
