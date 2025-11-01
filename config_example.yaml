@@ -13,6 +13,8 @@ defaults:
       enabled: true
       date_column: "import_date"
       facility_column: "facility_code"
+      facility_operator: "="
+      facility_value_template: "{code}"
     s3_uploads:
       enabled: true
       require_min_files: 1
@@ -44,10 +46,16 @@ properties:
           - "pms_rooms"
           - "pms_rooms_onhand"
           - "pms_sales"
-          - "enquetes"
+          - name: "enquetes"
+            facility_filter:
+              column: "facility_name"
+              operator: "like"
+              value_template: "{name}%"
           - "yoyakuban_customer"
           - "yoyakuban_reservations"
           - "yoyakuban_reservations_onhand"
+          - name: "facility_summary_daily"
+            facility_filter: false
       s3_uploads:
         enabled: true
         require_min_files: 1

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import os, sys, json, yaml, boto3, psycopg2, urllib.request, urllib.error, logging, argparse, traceback, socket
-from typing import Optional
+from typing import Optional, Tuple, List, Dict, Any
 from psycopg2 import sql
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -62,23 +62,141 @@ def connect_db(dsn: str):
     conn.set_client_encoding('UTF8')
     return conn
 
+FACILITY_FILTER_DISABLED = object()
+
+
+def normalize_facility_filter_settings(
+    base: Any,
+    override: Any,
+    fallback_column: Optional[str],
+    fallback_operator: Optional[str],
+    fallback_template: Optional[str],
+) -> Optional[Dict[str, Any]]:
+    def coerce(settings: Any) -> Any:
+        if settings is None:
+            return None
+        if settings is False:
+            return FACILITY_FILTER_DISABLED
+        if isinstance(settings, str):
+            return {"column": settings}
+        if isinstance(settings, dict):
+            if settings.get("enabled") is False:
+                return FACILITY_FILTER_DISABLED
+            if "column" in settings and not settings.get("column"):
+                return FACILITY_FILTER_DISABLED
+            return settings
+        return None
+
+    merged: Dict[str, Any] = {}
+
+    coerced_base = coerce(base)
+    if coerced_base is FACILITY_FILTER_DISABLED:
+        return None
+    if coerced_base:
+        merged.update({k: v for k, v in coerced_base.items() if v is not None})
+
+    coerced_override = coerce(override)
+    if coerced_override is FACILITY_FILTER_DISABLED:
+        return None
+    if coerced_override:
+        merged.update({k: v for k, v in coerced_override.items() if v is not None})
+
+    if not merged and fallback_column:
+        merged["column"] = fallback_column
+
+    if "column" not in merged or not merged.get("column"):
+        return None
+
+    if fallback_operator and "operator" not in merged:
+        merged["operator"] = fallback_operator
+    if fallback_template and "value_template" not in merged and "value" not in merged:
+        merged["value_template"] = fallback_template
+
+    if "operator" not in merged or not merged.get("operator"):
+        merged["operator"] = "="
+
+    value_tpl = merged.pop("value", None)
+    if value_tpl is not None and "value_template" not in merged:
+        merged["value_template"] = value_tpl
+    if "value_template" not in merged or not merged.get("value_template"):
+        merged["value_template"] = "{code}"
+
+    return merged
+
+
+def render_facility_clause(
+    filter_settings: Optional[Dict[str, Any]],
+    facility: Optional[Dict[str, Any]],
+) -> Tuple[Optional[sql.SQL], List[Any]]:
+    if not filter_settings or not facility:
+        return None, []
+
+    column = filter_settings.get("column")
+    if not column:
+        return None, []
+
+    operator_raw = (filter_settings.get("operator") or "=").strip().lower()
+    value_template = filter_settings.get("value_template") or "{code}"
+
+    ctx = dict(facility)
+    ctx.setdefault("code", facility.get("code"))
+    ctx.setdefault("facility_code", facility.get("code"))
+    ctx.setdefault("name", facility.get("name"))
+    ctx.setdefault("facility_name", facility.get("name"))
+
+    try:
+        value = value_template.format(**ctx)
+    except Exception as e:
+        raise ValueError(f"value_template format error: {e}")
+
+    op_map = {
+        "=": "=",
+        "==": "=",
+        "eq": "=",
+        "!=": "!=",
+        "ne": "!=",
+        "<>": "!=",
+        "like": "LIKE",
+        "ilike": "ILIKE",
+    }
+
+    if operator_raw in ("startswith", "prefix"):
+        op_sql = "LIKE"
+        value = f"{value}%"
+    elif operator_raw in ("endswith", "suffix"):
+        op_sql = "LIKE"
+        value = f"%{value}"
+    elif operator_raw in ("contains", "substring"):
+        op_sql = "LIKE"
+        value = f"%{value}%"
+    else:
+        op_sql = op_map.get(operator_raw, operator_raw.upper())
+
+    clause = sql.SQL("{col} {op} %s").format(
+        col=sql.Identifier(column),
+        op=sql.SQL(op_sql),
+    )
+    return clause, [value]
+
+
 def has_rows_for_today(
     conn,
     schema: str,
     table: str,
     date_col: str,
     today_jst: datetime,
-    facility_code: Optional[str] = None,
-    facility_column: Optional[str] = "facility_code",
+    facility: Optional[Dict[str, Any]] = None,
+    facility_filter: Optional[Dict[str, Any]] = None,
 ) -> bool:
     with conn.cursor() as cur:
         q = sql.SQL("SELECT 1 FROM {s}.{t} WHERE {c}::date = %s").format(
             s=sql.Identifier(schema), t=sql.Identifier(table), c=sql.Identifier(date_col)
         )
         params = [today_jst.date()]
-        if facility_code is not None and facility_column:
-            q = q + sql.SQL(" AND {fc} = %s").format(fc=sql.Identifier(facility_column))
-            params.append(facility_code)
+        clause, clause_params = render_facility_clause(facility_filter, facility)
+        if clause is not None:
+            q = q + sql.SQL(" AND ") + clause
+            params.extend(clause_params)
         q = q + sql.SQL(" LIMIT 1")
         cur.execute(q, params)
         return cur.fetchone() is not None
@@ -89,17 +207,18 @@ def latest_created_at(
     schema: str,
     table: str,
     created_col: str,
-    facility_code: Optional[str] = None,
-    facility_column: Optional[str] = "facility_code",
+    facility: Optional[Dict[str, Any]] = None,
+    facility_filter: Optional[Dict[str, Any]] = None,
 ):
     with conn.cursor() as cur:
         q = sql.SQL("SELECT MAX({c}) FROM {s}.{t}").format(
             c=sql.Identifier(created_col), s=sql.Identifier(schema), t=sql.Identifier(table)
         )
         params = []
-        if facility_code is not None and facility_column:
-            q = q + sql.SQL(" WHERE {fc} = %s").format(fc=sql.Identifier(facility_column))
-            params.append(facility_code)
+        clause, clause_params = render_facility_clause(facility_filter, facility)
+        if clause is not None:
+            q = q + sql.SQL(" WHERE ") + clause
+            params.extend(clause_params)
         cur.execute(q, params)
         row = cur.fetchone()
         return row[0] if row else None
@@ -182,10 +301,31 @@ def run_checks_for_property(prop: dict, defaults: dict, tz: ZoneInfo, today: dat
                     cfg_import = checks.get("import_tables") or {}
                     tables = cfg_import.get("tables", [])
                     default_col = cfg_import.get("date_column", "import_date")
-                    default_facility_col = cfg_import.get("facility_column", "facility_code")
+                    default_facility_filter = normalize_facility_filter_settings(
+                        base=cfg_import.get("facility_filter"),
+                        override=None,
+                        fallback_column=cfg_import.get("facility_column"),
+                        fallback_operator=cfg_import.get("facility_operator"),
+                        fallback_template=cfg_import.get("facility_value_template"),
+                    )
+                    default_facility_column = (
+                        (default_facility_filter or {}).get("column")
+                        or cfg_import.get("facility_column")
+                    )
+                    default_facility_operator = (
+                        (default_facility_filter or {}).get("operator")
+                        or cfg_import.get("facility_operator")
+                    )
+                    default_facility_template = (
+                        (default_facility_filter or {}).get("value_template")
+                        or cfg_import.get("facility_value_template")
+                    )
 
                     def run_import_check(
-                        table_name: str, date_col: str, fac: Optional[dict], fac_col: Optional[str]
+                        table_name: str,
+                        date_col: str,
+                        fac: Optional[dict],
+                        fac_filter: Optional[Dict[str, Any]],
                     ):
                         fac_label = facility_label(fac)
                         prefix = f"① {table_name}"
@@ -198,8 +338,8 @@ def run_checks_for_property(prop: dict, defaults: dict, tz: ZoneInfo, today: dat
                                 table_name,
                                 date_col,
                                 today,
-                                facility_code=(fac or {}).get("code"),
-                                facility_column=fac_col,
+                                facility=fac,
+                                facility_filter=fac_filter,
                             )
                             if ok:
                                 results["ok"].append(f"{prefix}: OK")
@@ -216,24 +356,81 @@ def run_checks_for_property(prop: dict, defaults: dict, tz: ZoneInfo, today: dat
                         if isinstance(t, dict):
                             tname = t.get("name")
                             tcol = t.get("date_column", default_col)
-                            tfac_col = t.get("facility_column", default_facility_col)
+                            inline_override: Dict[str, Any] = {}
+                            has_inline_override = False
+                            if "facility_column" in t:
+                                inline_override["column"] = t.get("facility_column")
+                                has_inline_override = True
+                            if "facility_operator" in t:
+                                inline_override["operator"] = t.get("facility_operator")
+                                has_inline_override = True
+                            if "facility_value_template" in t:
+                                inline_override["value_template"] = t.get(
+                                    "facility_value_template"
+                                )
+                                has_inline_override = True
+
+                            table_facility_filter = normalize_facility_filter_settings(
+                                base=default_facility_filter,
+                                override=inline_override if has_inline_override else None,
+                                fallback_column=(
+                                    inline_override.get("column")
+                                    if has_inline_override and inline_override.get("column") is not None
+                                    else default_facility_column
+                                ),
+                                fallback_operator=(
+                                    inline_override.get("operator")
+                                    if has_inline_override and inline_override.get("operator") is not None
+                                    else default_facility_operator
+                                ),
+                                fallback_template=(
+                                    inline_override.get("value_template")
+                                    if has_inline_override
+                                    and inline_override.get("value_template") is not None
+                                    else default_facility_template
+                                ),
+                            )
+
+                            if "facility_filter" in t:
+                                table_facility_filter = normalize_facility_filter_settings(
+                                    base=table_facility_filter,
+                                    override=t.get("facility_filter"),
+                                    fallback_column=(
+                                        (table_facility_filter or {}).get("column")
+                                        or inline_override.get("column")
+                                        if has_inline_override
+                                        else default_facility_column
+                                    ),
+                                    fallback_operator=(
+                                        (table_facility_filter or {}).get("operator")
+                                        or inline_override.get("operator")
+                                        if has_inline_override
+                                        else default_facility_operator
+                                    ),
+                                    fallback_template=(
+                                        (table_facility_filter or {}).get("value_template")
+                                        or inline_override.get("value_template")
+                                        if has_inline_override
+                                        else default_facility_template
+                                    ),
+                                )
                         else:
                             tname = str(t)
                             tcol = default_col
-                            tfac_col = default_facility_col
+                            table_facility_filter = default_facility_filter
                         if not tname:
                             results["errors"].append("① テーブル名未設定のエントリが存在します。")
                             continue
-                        if facilities and tfac_col:
+                        if facilities and table_facility_filter:
                             for fac in facilities:
                                 if not fac.get("enabled", True):
                                     results["ok"].append(
                                         f"① {tname} [{facility_label(fac)}]: 施設設定が無効のためスキップ。"
                                     )
                                     continue
-                                run_import_check(tname, tcol, fac, tfac_col)
+                                run_import_check(tname, tcol, fac, table_facility_filter)
                         else:
-                            run_import_check(tname, tcol, None, None)
+                            run_import_check(tname, tcol, None, table_facility_filter if not facilities else None)
             except Exception as e:
                 results["errors"].append(f"① DB接続失敗（{e.__class__.__name__}: {e}）")
     if (checks.get("s3_uploads") or {}).get("enabled", False):
@@ -261,9 +458,17 @@ def run_checks_for_property(prop: dict, defaults: dict, tz: ZoneInfo, today: dat
                     table = tcfg.get("table", "repeat_track_tags")
                     col = tcfg.get("created_at_column", "created_at")
                     max_days = int(tcfg.get("max_stall_days", 3))
-                    facility_column = tcfg.get("facility_column", "facility_code")
+                    default_repeat_filter = normalize_facility_filter_settings(
+                        base=tcfg.get("facility_filter"),
+                        override=None,
+                        fallback_column=tcfg.get("facility_column"),
+                        fallback_operator=tcfg.get("facility_operator"),
+                        fallback_template=tcfg.get("facility_value_template"),
+                    )
 
-                    def run_repeat_check(fac: Optional[dict], fac_col: Optional[str]):
+                    def run_repeat_check(
+                        fac: Optional[dict], fac_filter: Optional[Dict[str, Any]]
+                    ):
                         fac_label = facility_label(fac)
                         prefix = f"③ {table}"
                         if fac_label:
@@ -273,8 +478,8 @@ def run_checks_for_property(prop: dict, defaults: dict, tz: ZoneInfo, today: dat
                             schema,
                             table,
                             col,
-                            facility_code=(fac or {}).get("code"),
-                            facility_column=fac_col,
+                            facility=fac,
+                            facility_filter=fac_filter,
                         )
                         if latest is None:
                             results["errors"].append(f"{prefix}: データ無し（MAX({col})がNULL）")
@@ -294,16 +499,16 @@ def run_checks_for_property(prop: dict, defaults: dict, tz: ZoneInfo, today: dat
                                 f"{prefix}: OK（最終 {latest_local.strftime('%Y-%m-%d %H:%M')}）"
                             )
 
-                    if facilities and facility_column:
+                    if facilities and default_repeat_filter:
                         for fac in facilities:
                             if not fac.get("enabled", True):
                                 results["ok"].append(
                                     f"③ {table} [{facility_label(fac)}]: 施設設定が無効のためスキップ。"
                                 )
                                 continue
-                            run_repeat_check(fac, facility_column)
+                            run_repeat_check(fac, default_repeat_filter)
                     else:
-                        run_repeat_check(None, None)
+                        run_repeat_check(None, default_repeat_filter if not facilities else None)
             except Exception as e:
                 results["errors"].append(f"③ DB照会失敗（{e.__class__.__name__}: {e}）")
     return results
