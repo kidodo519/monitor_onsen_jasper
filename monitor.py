@@ -45,6 +45,14 @@ def build_slack_blocks(results_subset, jst_today_str: str):
         return []
     return [{"type": "section", "text": {"type": "mrkdwn", "text": header}}] + sections
 
+
+def build_ok_slack_blocks(jst_today_str: str):
+    header = f"データ監視アラート（{jst_today_str}）"
+    return [
+        {"type": "section", "text": {"type": "mrkdwn", "text": header}},
+        {"type": "section", "text": {"type": "mrkdwn", "text": "データは正常に取得されています。"}},
+    ]
+
 def send_slack_batches(webhook_url: str, header_text: str, blocks: list, max_blocks=40):
     if not blocks:
         return
@@ -697,6 +705,19 @@ def main():
         print("RESULT: ERROR_SENT" if sent_any else "RESULT: ERROR_NO_SLACK")
         return 1
     else:
+        ok_urls = set()
+        for r in all_results:
+            url = r.get("_slack_webhook") or global_slack
+            if not url or not isinstance(url, str) or not url.startswith("https://hooks.slack.com/services/"):
+                continue
+            ok_urls.add(url)
+        header_text = f"データ監視アラート（{jst_today_str}）"
+        ok_blocks = build_ok_slack_blocks(jst_today_str)
+        for url in ok_urls:
+            try:
+                send_slack_batches(url, header_text, ok_blocks, max_blocks=40)
+            except Exception as e:
+                logging.error(f"Slack送信失敗(OK通知): {e}")
         print(json.dumps(all_results, ensure_ascii=False, indent=2))
         print("RESULT: OK")
         return 0
