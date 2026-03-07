@@ -12,9 +12,9 @@
     import_tables:
       enabled: true
       date_column: "import_date"
-      facility_column: "facility_code"
+      facility_column: "facility_id"
       facility_operator: "="
-      facility_value_template: "{code}"
+      facility_value_template: "{facility_id}"
     s3_uploads:
       enabled: false
       require_min_files: 1
