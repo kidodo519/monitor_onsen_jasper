@@ -72,11 +72,36 @@ def connect_db(dsn: str):
 
 FACILITY_FILTER_DISABLED = object()
 
+FACILITY_IDENTIFIER_KEYS = ("facility_id", "id", "code", "facility_code")
+
+
+FACILITY_COLUMN_FALLBACKS = {"facility_id": "facility_code", "facility_code": "facility_id"}
+
+
+def extract_facility_identifier(facility: Dict[str, Any]) -> Optional[str]:
+    for key in FACILITY_IDENTIFIER_KEYS:
+        value = facility.get(key)
+        if value is not None and str(value) != "":
+            return str(value)
+    return None
+
+
+def build_facility_template_context(facility: Dict[str, Any]) -> Dict[str, Any]:
+    ctx = dict(facility)
+    identifier = extract_facility_identifier(facility)
+    name = facility.get("name") or facility.get("facility_name")
+    # facility_code は将来的に廃止予定だが、既存設定互換のため当面残す
+    for key in FACILITY_IDENTIFIER_KEYS:
+        ctx.setdefault(key, identifier)
+    ctx.setdefault("name", name)
+    ctx.setdefault("facility_name", name)
+    return ctx
+
 
 def normalize_facility_filter_settings(
     base: Any,
     override: Any,
-    fallback_column: Optional[str],
+    fallback_column: Any,
     fallback_operator: Optional[str],
     fallback_template: Optional[str],
 ) -> Optional[Dict[str, Any]]:
@@ -86,6 +111,8 @@ def normalize_facility_filter_settings(
         if settings is False:
             return FACILITY_FILTER_DISABLED
         if isinstance(settings, str):
+            return {"column": settings}
+        if isinstance(settings, list):
             return {"column": settings}
         if isinstance(settings, dict):
             if settings.get("enabled") is False:
@@ -127,7 +154,7 @@ def normalize_facility_filter_settings(
     if value_tpl is not None and "value_template" not in merged:
         merged["value_template"] = value_tpl
     if "value_template" not in merged or not merged.get("value_template"):
-        merged["value_template"] = "{code}"
+        merged["value_template"] = "{facility_id}"
 
     return merged
 
@@ -144,13 +171,8 @@ def render_facility_clause(
         return None, []
 
     operator_raw = (filter_settings.get("operator") or "=").strip().lower()
-    value_template = filter_settings.get("value_template") or "{code}"
-
-    ctx = dict(facility)
-    ctx.setdefault("code", facility.get("code"))
-    ctx.setdefault("facility_code", facility.get("code"))
-    ctx.setdefault("name", facility.get("name"))
-    ctx.setdefault("facility_name", facility.get("name"))
+    value_template = filter_settings.get("value_template") or "{facility_id}"
+    ctx = build_facility_template_context(facility)
 
     try:
         value = value_template.format(**ctx)
@@ -185,6 +207,71 @@ def render_facility_clause(
         op=sql.SQL(op_sql),
     )
     return clause, [value]
+
+
+def build_facility_column_candidates(column_setting: Any) -> List[str]:
+    candidates: List[str] = []
+
+    if isinstance(column_setting, str):
+        candidates.extend([c.strip() for c in column_setting.split("|") if c and c.strip()])
+    elif isinstance(column_setting, list):
+        for col in column_setting:
+            if col is None:
+                continue
+            col_str = str(col).strip()
+            if col_str:
+                candidates.append(col_str)
+
+    if isinstance(column_setting, str):
+        fallback = FACILITY_COLUMN_FALLBACKS.get(column_setting.strip())
+        if fallback:
+            candidates.append(fallback)
+
+    seen = set()
+    unique_candidates = []
+    for col in candidates:
+        if col not in seen:
+            seen.add(col)
+            unique_candidates.append(col)
+
+    return unique_candidates
+
+
+def resolve_facility_filter_for_table(
+    conn,
+    schema: str,
+    table: str,
+    filter_settings: Optional[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    if not filter_settings:
+        return None
+
+    base_column = filter_settings.get("column")
+    if not base_column:
+        return None
+
+    unique_candidates = build_facility_column_candidates(base_column)
+    if not unique_candidates:
+        return filter_settings
+
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = %s AND table_name = %s
+            """,
+            [schema, table],
+        )
+        existing = {row[0] for row in cur.fetchall()}
+
+    for col in unique_candidates:
+        if col in existing:
+            resolved = dict(filter_settings)
+            resolved["column"] = col
+            return resolved
+
+    return None
 
 
 def has_rows_for_today(
@@ -300,16 +387,19 @@ def run_checks_for_property(prop: dict, defaults: dict, tz: ZoneInfo, today: dat
     facilities = []
     for idx, raw_fac in enumerate(raw_facilities, 1):
         if isinstance(raw_fac, str):
-            facilities.append({"code": raw_fac, "name": raw_fac, "enabled": True})
+            facilities.append({"facility_id": raw_fac, "code": raw_fac, "name": raw_fac, "enabled": True})
         elif isinstance(raw_fac, dict):
-            code = raw_fac.get("code") or raw_fac.get("facility_code")
-            if not code:
-                results["errors"].append(f"施設定義{idx}: codeが未設定のためスキップ。")
+            identifier = extract_facility_identifier(raw_fac)
+            if not identifier:
+                results["errors"].append(
+                    f"施設定義{idx}: facility_id(id/code/facility_code)が未設定のためスキップ。"
+                )
                 continue
             facilities.append(
                 {
-                    "code": code,
-                    "name": raw_fac.get("name") or code,
+                    "facility_id": identifier,
+                    "code": raw_fac.get("code") or raw_fac.get("facility_code") or identifier,
+                    "name": raw_fac.get("name") or identifier,
                     "enabled": raw_fac.get("enabled", True),
                 }
             )
@@ -324,8 +414,8 @@ def run_checks_for_property(prop: dict, defaults: dict, tz: ZoneInfo, today: dat
         name = fac.get("name")
         if name:
             return name
-        code = fac.get("code")
-        return code or "UNKNOWN"
+        identifier = extract_facility_identifier(fac)
+        return identifier or "UNKNOWN"
 
     if (checks.get("import_tables") or {}).get("enabled", False):
         if not dsn:
@@ -367,15 +457,66 @@ def run_checks_for_property(prop: dict, defaults: dict, tz: ZoneInfo, today: dat
                         if fac_label:
                             prefix = f"{prefix} [{fac_label}]"
                         try:
-                            ok = has_rows_for_today(
+                            resolved_fac_filter = resolve_facility_filter_for_table(
                                 conn,
                                 schema,
                                 table_name,
-                                date_col,
-                                today,
-                                facility=fac,
-                                facility_filter=fac_filter,
+                                fac_filter,
                             )
+
+                            if fac_filter and not resolved_fac_filter:
+                                requested_col = fac_filter.get("column")
+                                results["ok"].append(
+                                    f"{prefix}: 施設フィルタ列({requested_col})が存在しないためスキップ。"
+                                )
+                                return
+
+                            filter_candidates: List[Optional[Dict[str, Any]]] = [resolved_fac_filter]
+                            if resolved_fac_filter:
+                                dynamic_candidates = build_facility_column_candidates(
+                                    resolved_fac_filter.get("column")
+                                )
+                                if len(dynamic_candidates) <= 1:
+                                    dynamic_candidates = build_facility_column_candidates(
+                                        (fac_filter or {}).get("column")
+                                    )
+                                for col in dynamic_candidates:
+                                    if col == resolved_fac_filter.get("column"):
+                                        continue
+                                    cand = dict(resolved_fac_filter)
+                                    cand["column"] = col
+                                    filter_candidates.append(cand)
+
+                            last_exception = None
+                            ok = False
+                            executed = False
+                            for cand_filter in filter_candidates:
+                                try:
+                                    executed = True
+                                    ok = has_rows_for_today(
+                                        conn,
+                                        schema,
+                                        table_name,
+                                        date_col,
+                                        today,
+                                        facility=fac,
+                                        facility_filter=cand_filter,
+                                    )
+                                    break
+                                except psycopg2.errors.UndefinedColumn as e:
+                                    last_exception = e
+                                    continue
+
+                            if last_exception and not ok:
+                                results["ok"].append(
+                                    f"{prefix}: 施設列不一致のためスキップ（候補: {(fac_filter or {}).get('column')}）"
+                                )
+                                return
+
+                            if not executed:
+                                results["ok"].append(f"{prefix}: 施設フィルタ未設定のためスキップ。")
+                                return
+
                             if ok:
                                 results["ok"].append(f"{prefix}: OK")
                             else:
