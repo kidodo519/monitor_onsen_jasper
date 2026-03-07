@@ -1,13 +1,13 @@
-defaults:
+﻿defaults:
   timezone: "Asia/Tokyo"
   slack:
-    webhook_url: "xxxxxxxx"
+    webhook_url: "xxxxxx"
   s3:
-    bucket: "onsen-jasper-importer-prod-archive"
+    bucket: "xxxxxxx"
     prefix_template: "{hotel_key}/pms-reservations/"
     require_min_files: 1
   db:
-    dsn_template: "postgresql://bi_readonly:xxxx@incrazetech-app-db-prod.app-prod.incrazetech.dev:5432/reservation_db_{hotel_key}"
+    dsn_template: "postgresql:/xxxxxxx:xxxxxxx@incrazetech-xxxxxxx/reservation_db_{hotel_key}"
   checks:
     import_tables:
       enabled: true
@@ -50,9 +50,10 @@ properties:
           - "pms_rooms"
           - "pms_rooms_onhand"
           - "pms_sales"
-          - name: "enquetes"
+          # - name: "enquetes"
+          #   facility_filter: false
+          - name: "yoyakuban_customer"
             facility_filter: false
-          - "yoyakuban_customer"
           - "yoyakuban_reservations"
           - "yoyakuban_reservations_onhand"
       s3_uploads:
@@ -86,7 +87,8 @@ properties:
           - "pms_sales"
           - "pms_sales_onhand"          
           - "enquetes"
-          - "yoyakuban_customer"
+          - name: "yoyakuban_customer"
+            facility_filter: false
           - "yoyakuban_reservations"
           - "yoyakuban_reservations_onhand"
       s3_uploads:
@@ -119,7 +121,8 @@ properties:
           - "pms_sales_onhand"          
           - name: "enquetes"
             facility_filter: false
-          - "yoyakuban_customer"
+          - name: "yoyakuban_customer"
+            facility_filter: false
           - "yoyakuban_reservations"
           - "yoyakuban_reservations_onhand"
       s3_uploads:
@@ -156,7 +159,8 @@ properties:
           - "pms_sales_onhand"          
           - name: "enquetes"
             facility_filter: false
-          - "yoyakuban_customer"
+          - name: "yoyakuban_customer"
+            facility_filter: false
           - "yoyakuban_reservations"
           - "yoyakuban_reservations_onhand"
       s3_uploads:
@@ -190,7 +194,8 @@ properties:
           - "pms_sales"
           - "pms_sales_onhand"          
           - "enquetes"
-          - "yoyakuban_customer"
+          - name: "yoyakuban_customer"
+            facility_filter: false
           - "yoyakuban_reservations"
           - "yoyakuban_reservations_onhand"
       s3_uploads:
@@ -225,7 +230,8 @@ properties:
             facility_filter: false
           - name: "enquetes_text"
             facility_filter: false
-          - "yoyakuban_customer"
+          - name: "yoyakuban_customer"
+            facility_filter: false
           - "yoyakuban_reservations"
           - "yoyakuban_reservations_onhand"
       s3_uploads:
@@ -265,7 +271,8 @@ properties:
           - "pms_sales"
           - "pms_sales_onhand"          
           - "enquetes"
-          - "yoyakuban_customer"
+          - name: "yoyakuban_customer"
+            facility_filter: false
           - "yoyakuban_reservations"
           - "yoyakuban_reservations_onhand"
       s3_uploads:
@@ -299,14 +306,17 @@ properties:
           - "pms_sales"
           - "pms_sales_onhand"          
           # - "enquetes"
-          - "yoyakuban_customer"
+          - name: "enquetes"
+            facility_filter: false
+          - name: "yoyakuban_customer"
+            facility_filter: false
           - "yoyakuban_reservations"
           - "yoyakuban_reservations_onhand"
       s3_uploads:
         enabled: true
         require_min_files: 1
       repeat_track_tags_stall:
-        enabled: true
+        enabled: false
         table: "repeat_track_tags"
         created_at_column: "created_at"
         max_stall_days: 3
@@ -331,7 +341,8 @@ properties:
           - "pms_sales"
           - "pms_sales_onhand"          
           # - "enquetes"
-          # - "yoyakuban_customer"
+          # - name: "yoyakuban_customer"
+          #   facility_filter: false
           # - "yoyakuban_reservations"
           # - "yoyakuban_reservations_onhand"
       s3_uploads:
@@ -363,7 +374,8 @@ properties:
           - "pms_sales"
           - "pms_sales_onhand"          
           # - "enquetes"
-          - "yoyakuban_customer"
+          - name: "yoyakuban_customer"
+            facility_filter: false
           - "yoyakuban_reservations"
           - "yoyakuban_reservations_onhand"
       s3_uploads:
@@ -396,7 +408,8 @@ properties:
           - "pms_sales"
           - "pms_sales_onhand"          
           - "enquetes"
-          # - "yoyakuban_customer"
+          # - name: "yoyakuban_customer"
+          #   facility_filter: false
           # - "yoyakuban_reservations"
           # - "yoyakuban_reservations_onhand"
       s3_uploads:
@@ -427,6 +440,107 @@ properties:
           - "pms_rooms"
           - "pms_rooms_onhand"
           - "pms_sales"
+          - "pms_sales_onhand"          
+          # - "enquetes"
+          # - name: "yoyakuban_customer"
+          #   facility_filter: false
+          # - "yoyakuban_reservations"
+          # - "yoyakuban_reservations_onhand"
+      s3_uploads:
+        enabled: true
+        require_min_files: 1
+      repeat_track_tags_stall:
+        enabled: false
+        table: "repeat_track_tags"
+        created_at_column: "created_at"
+        max_stall_days: 3
+
+
+  - name: "御幸荘"
+    enabled: true
+    hotel_key: "miyukiso"
+    facilities:
+      - code: "1"
+        name: "御幸荘"
+    db:
+      schema: "public"
+    checks:
+      import_tables:
+        enabled: true
+        date_column: "import_date"
+        tables:
+          - "pms_reservations"
+          - "pms_reservations_onhand"
+          - "pms_rooms"
+          - "pms_rooms_onhand"
+          - "pms_sales"
+          - "pms_sales_onhand"          
+          # - "enquetes"
+          # - name: "yoyakuban_customer"
+          #   facility_filter: false
+          # - "yoyakuban_reservations"
+          # - "yoyakuban_reservations_onhand"
+      s3_uploads:
+        enabled: true
+        require_min_files: 1
+      repeat_track_tags_stall:
+        enabled: false
+        table: "repeat_track_tags"
+        created_at_column: "created_at"
+        max_stall_days: 3
+
+
+  - name: "かたくらシルクホテル"
+    enabled: true
+    hotel_key: "katakura"
+    facilities:
+      - code: "1"
+        name: "かたくらシルクホテル"
+    db:
+      schema: "public"
+    checks:
+      import_tables:
+        enabled: true
+        date_column: "import_date"
+        tables:
+          - "pms_reservations_history"
+          - "pms_reservations_onhand"
+          - "pms_rooms_history"
+          - "pms_rooms_onhand"
+          - "pms_sales_history
+          - "pms_sales_onhand"          
+          - "enquetes"
+          - "yoyakuban_customer"
+          - "yoyakuban_reservations"
+          - "yoyakuban_reservations_onhand"
+      s3_uploads:
+        enabled: true
+        require_min_files: 1
+      repeat_track_tags_stall:
+        enabled: false
+        table: "repeat_track_tags"
+        created_at_column: "created_at"
+        max_stall_days: 3
+
+
+  - name: "ねぎや陵楓閣"
+    enabled: true
+    hotel_key: "negiya"
+    facilities:
+      - code: "1"
+        name: "ねぎや陵楓閣"
+    db:
+      schema: "public"
+    checks:
+      import_tables:
+        enabled: true
+        date_column: "import_date"
+        tables:
+          - "pms_reservations_history"
+          - "pms_reservations_onhand"
+          - "pms_rooms_history"
+          - "pms_rooms_onhand"
+          - "pms_sales_history
           - "pms_sales_onhand"          
           # - "enquetes"
           # - "yoyakuban_customer"
